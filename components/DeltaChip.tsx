@@ -1,4 +1,4 @@
-/** Compact delta — grayscale only (option B). */
+/** Compact delta — semantic grayscale accents. */
 type Tone = "up" | "down" | "flat" | "na";
 
 export function DeltaChip({

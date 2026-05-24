@@ -12,7 +12,18 @@ import {
   computeDailySeries,
 } from "../lib/sources/growthepie";
 import { getL2Tvl } from "../lib/sources/l2beat";
-import { getBurnRateDaily, getStakingRatio } from "../lib/sources/ultrasound";
+import {
+  getBurnRateDaily,
+  getEthTotalSupply,
+  getStakingRatio,
+} from "../lib/sources/ultrasound";
+import {
+  getNetIssuanceDaily,
+  getSupplyInflationAnnualized,
+  annualizedFromWindow,
+} from "../lib/sources/supply-metrics";
+import { getValidatorQueueRatio } from "../lib/sources/beaconcha-queue";
+import { getEtfFlows6mUsd } from "../lib/sources/etf-flows";
 import { getBlobCountLatest } from "../lib/sources/rpc-blob";
 import { getSerTotalEth } from "../lib/sources/ser";
 import { getEthDefiShare } from "../lib/sources/defillama-eth-share";
@@ -44,7 +55,7 @@ function metricToPayload(m: MetricResult, ts: number): SnapshotPayload {
   };
 }
 
-// Hourly snapshot: fetch all 9 sources in parallel, write 9 rows to Convex.
+// Hourly snapshot: fetch all board metrics in parallel, write rows to Convex.
 export const snapshotAll = internalAction({
   args: {},
   returns: v.object({ inserted: v.number(), stale: v.number() }),
@@ -58,10 +69,15 @@ export const snapshotAll = internalAction({
       rwa,
       l2tvl,
       burn,
+      netIssuance,
+      supplyInflation,
       staking,
+      validatorQueue,
       blob,
       ser,
+      etfFlows,
       ethShare,
+      ethSupply,
       fundamentals,
     ] = await Promise.all([
       getEthBtc(),
@@ -69,10 +85,15 @@ export const snapshotAll = internalAction({
       getRwaShareEthereum(),
       getL2Tvl(),
       getBurnRateDaily(),
+      getNetIssuanceDaily(),
+      getSupplyInflationAnnualized(),
       getStakingRatio(),
+      getValidatorQueueRatio(),
       getBlobCountLatest(),
       getSerTotalEth(),
+      getEtfFlows6mUsd(),
       getEthDefiShare(),
+      getEthTotalSupply(),
       fundamentalsPromise,
     ]);
 
@@ -109,14 +130,19 @@ export const snapshotAll = internalAction({
       tps,
       stables,
       burn,
+      netIssuance,
+      supplyInflation,
       staking,
+      validatorQueue,
       l2tvl,
       eth_btc,
       daa,
       rwa,
       blob,
       ser,
+      etfFlows,
       ethShare,
+      ethSupply,
     ];
 
     let inserted = 0;
@@ -140,6 +166,9 @@ export const backfillHistorical = internalAction({
     l2_tvl: v.number(),
     tps_l1_l2: v.number(),
     daa_l1_l2: v.number(),
+    eth_total_supply: v.number(),
+    net_issuance_daily: v.number(),
+    supply_inflation_annualized: v.number(),
   }),
   handler: async (
     ctx,
@@ -150,6 +179,9 @@ export const backfillHistorical = internalAction({
     l2_tvl: number;
     tps_l1_l2: number;
     daa_l1_l2: number;
+    eth_total_supply: number;
+    net_issuance_daily: number;
+    supply_inflation_annualized: number;
   }> => {
     const days = args.days ?? 30;
     const counters = {
@@ -158,6 +190,9 @@ export const backfillHistorical = internalAction({
       l2_tvl: 0,
       tps_l1_l2: 0,
       daa_l1_l2: 0,
+      eth_total_supply: 0,
+      net_issuance_daily: 0,
+      supply_inflation_annualized: 0,
     };
 
     // CoinGecko ETH/BTC — /coins/ethereum/market_chart, daily granularity for >90d
@@ -277,6 +312,80 @@ export const backfillHistorical = internalAction({
           unit: "addresses",
         });
         counters.daa_l1_l2++;
+      }
+    } catch {
+      /* swallow */
+    }
+
+    // Ultrasound — ETH total supply (for T1.2). d1 is hourly (~2 days only);
+    // since_merge is daily from the merge (2022+) — required for 180d trigger window.
+    try {
+      const res = await fetch(
+        "https://ultrasound.money/api/v2/fees/supply-over-time",
+      );
+      if (res.ok) {
+        const data = (await res.json()) as {
+          since_merge?: Array<{ supply?: number; timestamp?: string }>;
+        };
+        const cutoff = Date.now() - days * 86400 * 1000;
+        const seenDay = new Set<string>();
+        const dailyPoints: Array<{ ts: number; supply: number }> = [];
+        for (const row of data.since_merge ?? []) {
+          if (typeof row.supply !== "number" || !row.timestamp) continue;
+          const tsMs = Date.parse(row.timestamp);
+          if (Number.isNaN(tsMs) || tsMs < cutoff) continue;
+          const day = new Date(tsMs).toISOString().slice(0, 10);
+          if (seenDay.has(day)) continue;
+          seenDay.add(day);
+          dailyPoints.push({ ts: tsMs, supply: row.supply });
+          await ctx.runMutation(internal.snapshots.insertIfMissing, {
+            metric_name: "eth_total_supply",
+            value: row.supply,
+            status: "ok",
+            timestamp: tsMs,
+            source: "ultrasound.money supply-over-time since_merge (backfill)",
+            formatted: fmtNum(row.supply, 0),
+            unit: "ETH",
+          });
+          counters.eth_total_supply++;
+        }
+
+        dailyPoints.sort((a, b) => a.ts - b.ts);
+        for (let i = 1; i < dailyPoints.length; i++) {
+          const prev = dailyPoints[i - 1];
+          const curr = dailyPoints[i];
+          const daySpan = (curr.ts - prev.ts) / 86400000;
+          if (daySpan <= 0) continue;
+          const netDaily = (curr.supply - prev.supply) / daySpan;
+          await ctx.runMutation(internal.snapshots.insertIfMissing, {
+            metric_name: "net_issuance_daily",
+            value: netDaily,
+            status: "ok",
+            timestamp: curr.ts,
+            source: "ultrasound.money supply delta (backfill)",
+            formatted: `${netDaily >= 0 ? "+" : ""}${fmtNum(netDaily, 1)}`,
+            unit: "ETH/day",
+          });
+          counters.net_issuance_daily++;
+        }
+
+        const windowDays = 180;
+        for (let i = windowDays; i < dailyPoints.length; i++) {
+          const start = dailyPoints[i - windowDays];
+          const end = dailyPoints[i];
+          const annualized = annualizedFromWindow(start.supply, end.supply, windowDays);
+          if (annualized === null) continue;
+          await ctx.runMutation(internal.snapshots.insertIfMissing, {
+            metric_name: "supply_inflation_annualized",
+            value: annualized,
+            status: "ok",
+            timestamp: end.ts,
+            source: "ultrasound.money supply annualized (backfill)",
+            formatted: `${annualized >= 0 ? "+" : ""}${fmtPct(annualized, 2)}`,
+            unit: "%/yr",
+          });
+          counters.supply_inflation_annualized++;
+        }
       }
     } catch {
       /* swallow */

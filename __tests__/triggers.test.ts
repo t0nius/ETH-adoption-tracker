@@ -78,6 +78,21 @@ describe("trigger T1.4 — staking ratio drop from peak", () => {
     });
     expect(r.status).toBe("triggered");
   });
+
+  it("triggered via auto queue ratio sustained 90 days", () => {
+    const hist = daily([30, 32, 32]);
+    const queue = daily(Array(95).fill(2.5));
+    const r = evalT14(hist, null, queue);
+    expect(r.status).toBe("triggered");
+    expect(r.metadata?.queue_source).toBe("auto");
+  });
+
+  it("warning when queue > 2x but under 90 days", () => {
+    const hist = daily([30, 32, 32]);
+    const queue = daily(Array(30).fill(2.5));
+    const r = evalT14(hist, null, queue);
+    expect(r.status).toBe("warning");
+  });
 });
 
 describe("trigger T2.5/T2.6 — 12-month drop", () => {
@@ -160,6 +175,15 @@ describe("trigger T1.3 — ETF flows AND SER drop", () => {
       toggled_at: today,
     });
     expect(r.status).toBe("triggered");
+  });
+
+  it("triggered when ETF auto negative and SER drop met", () => {
+    const old = Array(90).fill(8000);
+    const recent = Array(100).fill(5000);
+    const etf = daily([-500_000_000]);
+    const r = evalT13(daily([...old, ...recent]), null, etf);
+    expect(r.status).toBe("triggered");
+    expect(r.metadata?.etf_source).toBe("auto");
   });
 });
 

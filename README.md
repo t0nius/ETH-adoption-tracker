@@ -61,9 +61,12 @@ Without the admin/export tokens in production, those endpoints return **503** in
 
 ## Architecture notes
 
-- **Dashboard** uses a single query: `snapshots.dashboardOverview` (bundles, sources, triggers, regime score).
+- **Dashboard** uses `snapshots.dashboardOverview` (bundles, sources, triggers, adoption + operational scores, fragile sources).
+- **Four pillars** summary (Usage / Monetary / Institutional / Infrastructure) with drill-down anchors on the metric grid.
+- **Board** — 14 visible metrics (Usage, Monetary, Institutional, Infrastructure). **T1.2** also uses hidden `eth_total_supply` snapshots (ultrasound.money).
+- **Trigger badges**: AUTO · PARTIAL · MANUAL on each invalidation card.
 - **History** is downsampled to daily points for charts; raw hourly snapshots are purged after **180 days** (weekly cron).
-- **Regime score** — see `lib/regime.ts` and the Methodology page.
+- **Scores** — Fundamentals (weighted trends, live only) vs Data health (coverage/freshness): `lib/regime.ts`. Triggers stay separate.
 
 ## Deployment
 

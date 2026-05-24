@@ -1,6 +1,6 @@
 import { EmptyMetricCard, MetricBundle, MetricCard } from "@/components/MetricCard";
 import { METRIC_DEFINITIONS, MetricName } from "@/lib/metrics";
-import type { Period } from "./MetricGridControls";
+import type { GridMode, Period } from "./MetricGridControls";
 
 function metricHealthBucket(
   b: MetricBundle,
@@ -25,10 +25,12 @@ export function MetricGridByStatus({
   bundles,
   period,
   missing,
+  gridMode,
 }: {
   bundles: MetricBundle[];
   period: Period;
   missing: string[];
+  gridMode: GridMode;
 }) {
   const buckets: Record<string, MetricBundle[]> = {
     stale: [],
@@ -90,7 +92,7 @@ export function MetricGridByStatus({
             </div>
             <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
               {cards.map((b) => (
-                <MetricCard key={b.metric_name} bundle={b} selectedPeriod={period} />
+                <MetricCard key={b.metric_name} bundle={b} selectedPeriod={period} gridMode={gridMode} />
               ))}
             </div>
           </div>

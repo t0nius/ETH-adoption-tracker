@@ -3,8 +3,7 @@
 @tailwind utilities;
 
 /* ============================================================
-   ETH Adoption Tracker — Monochrome minimal (option B)
-   Grayscale everywhere. --signal only for tripped triggers / breach.
+   ETH Adoption Tracker — Dark minimal + light semantic accents
    ============================================================ */
 
 :root {
@@ -23,21 +22,21 @@
   --dim: #4a4a4a;
   --faint: #2e2e2e;
 
-  /* Directional data — grayscale only */
-  --up: var(--ink-soft);
-  --down: var(--muted);
-  --up-bg: transparent;
-  --down-bg: transparent;
-
-  /* Single highlight — invalidation / tripped trigger */
-  --signal: var(--ink);
-  --signal-bg: var(--bg-2);
-
-  /* Legacy aliases → grayscale */
-  --accent: var(--ink-soft);
-  --ok: var(--muted);
-  --warn: var(--ink-soft);
+  /* 3 semantic hues — visible on dark, not neon */
+  --up: #72b88a;
+  --down: #c07878;
+  --watch: #c4a060;
+  --signal: #d08888;
+  --up-bg: rgba(114, 184, 138, 0.1);
+  --down-bg: rgba(192, 120, 120, 0.1);
+  --watch-bg: rgba(196, 160, 96, 0.1);
+  --signal-bg: rgba(208, 136, 136, 0.12);
+  --ok: var(--up);
+  --warn: var(--watch);
   --alert: var(--signal);
+
+  --section-gap: 1.25rem;
+  --body-size: 0.8125rem;
 }
 
 @layer base {
@@ -46,10 +45,12 @@
     min-height: 100%;
     background: var(--bg-0);
     color: var(--ink);
+    font-size: var(--body-size);
   }
 
   body {
     font-family: var(--font-body), -apple-system, sans-serif;
+    line-height: 1.5;
   }
 
   h1 {
@@ -86,6 +87,24 @@
   .text-muted { color: var(--muted); }
   .text-dim { color: var(--dim); }
   .text-signal { color: var(--signal); }
+  .text-up { color: var(--up); }
+  .text-down { color: var(--down); }
+  .text-watch { color: var(--watch); }
+  .border-signal { border-color: var(--signal); }
+  .chip-up { color: var(--up); background: var(--up-bg); }
+  .chip-down { color: var(--signal); background: var(--signal-bg); }
+  .chip-watch { color: var(--watch); background: var(--watch-bg); }
+  .verdict-accent-act {
+    border-left: 3px solid var(--signal);
+    background: var(--signal-bg);
+  }
+  .verdict-accent-watch {
+    border-left: 3px solid var(--watch);
+    background: var(--watch-bg);
+  }
+  .verdict-accent-clear {
+    border-left: 3px solid var(--up);
+  }
 
   .font-display {
     font-family: var(--font-display), sans-serif;
@@ -102,13 +121,15 @@
 
   .text-eyebrow {
     font-family: var(--font-mono), monospace;
-    font-size: 0.625rem;
-    line-height: 1;
-    letter-spacing: 0.14em;
+    font-size: 0.6875rem;
+    line-height: 1.2;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     font-weight: 500;
     color: var(--muted);
   }
+
+  .section-gap { margin-top: var(--section-gap); }
 
   .surface {
     background: var(--bg-1);
@@ -125,19 +146,18 @@
 
   .status-tag {
     font-family: var(--font-mono), monospace;
-    font-size: 0.625rem;
-    letter-spacing: 0.14em;
+    font-size: 0.6875rem;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
     font-weight: 600;
     color: var(--muted);
   }
   .status-tag-stale { color: var(--signal); }
 
-  /* Compact delta row — borderless */
   .delta {
     font-family: var(--font-mono), monospace;
     font-variant-numeric: tabular-nums;
-    font-size: 0.65rem;
+    font-size: 0.6875rem;
     line-height: 1.2;
     display: inline-flex;
     align-items: baseline;
@@ -145,12 +165,12 @@
   }
   .delta .lbl {
     color: var(--dim);
-    font-size: 0.55rem;
+    font-size: 0.625rem;
     letter-spacing: 0.1em;
     text-transform: uppercase;
   }
-  .delta-up { color: var(--ink-soft); }
-  .delta-down { color: var(--muted); }
+  .delta-up { color: var(--up); font-weight: 500; }
+  .delta-down { color: var(--down); font-weight: 500; }
   .delta-flat { color: var(--dim); }
   .delta-na { color: var(--dim); }
 
@@ -164,14 +184,39 @@
     position: sticky;
     top: 0;
     z-index: 30;
-    background: rgba(10, 10, 10, 0.94);
-    backdrop-filter: blur(8px);
+    background: rgba(10, 10, 10, 0.96);
+    backdrop-filter: blur(10px);
     border-bottom: 1px solid var(--line);
+  }
+
+  .nav-pill {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.6875rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    font-weight: 500;
+    padding: 0.35rem 0.75rem;
+    border: 1px solid transparent;
+    color: var(--muted);
+    border-radius: 2px;
+    transition: color 120ms ease, background 120ms ease;
+  }
+  .nav-pill:hover {
+    color: var(--ink-soft);
+    background: var(--bg-2);
+  }
+  .nav-pill-active {
+    background: var(--bg-2);
+    color: var(--ink);
+  }
+  .nav-pill-active:hover {
+    background: var(--bg-2);
+    color: var(--ink);
   }
 
   .btn {
     font-family: var(--font-mono), monospace;
-    font-size: 0.7rem;
+    font-size: 0.6875rem;
     letter-spacing: 0.08em;
     text-transform: uppercase;
     font-weight: 500;
@@ -187,13 +232,13 @@
     color: var(--ink);
   }
   .btn-active {
-    background: var(--ink);
-    color: var(--bg-0);
-    border-color: var(--ink);
+    background: var(--bg-2);
+    color: var(--ink);
+    border-color: var(--line-bright);
   }
   .btn-active:hover {
-    background: var(--ink);
-    color: var(--bg-0);
+    background: var(--bg-2);
+    color: var(--ink);
   }
 
   .input {
@@ -202,7 +247,7 @@
     border: 1px solid var(--line);
     color: var(--ink);
     padding: 0.4rem 0.65rem;
-    font-size: 0.8rem;
+    font-size: 0.8125rem;
     width: 100%;
   }
   .input:focus {
@@ -217,11 +262,37 @@
     border-color: var(--line-bright);
   }
 
+  .skeleton {
+    background: linear-gradient(
+      90deg,
+      var(--bg-2) 0%,
+      var(--bg-3) 50%,
+      var(--bg-2) 100%
+    );
+    background-size: 200% 100%;
+    animation: skeleton-shimmer 1.4s ease infinite;
+  }
+
+  @keyframes skeleton-shimmer {
+    0% { background-position: 200% 0; }
+    100% { background-position: -200% 0; }
+  }
+
   @keyframes panel-in {
     from { opacity: 0; transform: translateY(2px); }
     to { opacity: 1; transform: translateY(0); }
   }
   .panel-in {
     animation: panel-in 320ms ease both;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .panel-in {
+      animation: none;
+    }
+    .skeleton {
+      animation: none;
+      background: var(--bg-2);
+    }
   }
 }

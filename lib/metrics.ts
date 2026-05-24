@@ -2,13 +2,17 @@ export type MetricName =
   | "tps_l1_l2"
   | "stables_supply_eth"
   | "burn_24h"
+  | "net_issuance_daily"
+  | "supply_inflation_annualized"
   | "staking_ratio"
+  | "validator_queue_ratio"
   | "l2_tvl"
   | "eth_btc"
   | "daa_l1_l2"
   | "rwa_eth_share"
   | "blob_count_latest"
   | "ser_total_eth"
+  | "etf_flows_6m_usd"
   | "eth_defi_share";
 
 export type MetricGroup =
@@ -87,6 +91,30 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     preferredTrend: "up",
   },
   {
+    name: "net_issuance_daily",
+    label: "Net ETH issuance (daily)",
+    group: "Monetary",
+    detailTitle: "Net supply change per day",
+    whyItMatters:
+      "Combines burn and staking issuance — negative values mean deflationary days.",
+    interpretationHint: "Trigger T1.2 also tracks annualized supply growth from total supply.",
+    preferredTrend: "down",
+  },
+  {
+    name: "supply_inflation_annualized",
+    label: "Supply inflation (annualized)",
+    group: "Monetary",
+    detailTitle: "Annualized ETH supply growth",
+    whyItMatters: "Sustained positive inflation above +1%/yr weakens scarcity narrative.",
+    interpretationHint: "Trigger T1.2 fires when annualized growth exceeds +1% for 6 months.",
+    threshold: {
+      label: "Trigger T1.2 level",
+      value: 1,
+      direction: "above",
+    },
+    preferredTrend: "down",
+  },
+  {
     name: "staking_ratio",
     label: "Staking ratio",
     group: "Monetary",
@@ -94,6 +122,21 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     whyItMatters: "Higher staking participation usually strengthens security alignment.",
     interpretationHint: "Trigger T1.4 monitors major degradation from cycle highs.",
     preferredTrend: "up",
+  },
+  {
+    name: "validator_queue_ratio",
+    label: "Exit queue / entry queue",
+    group: "Monetary",
+    detailTitle: "Validator exit vs deposit queue",
+    whyItMatters:
+      "Exit pressure above 2× entry for months signals staking unwind risk.",
+    interpretationHint: "Trigger T1.4 watches exit > 2× entry sustained for 3 months.",
+    threshold: {
+      label: "Trigger T1.4 queue level",
+      value: 2,
+      direction: "above",
+    },
+    preferredTrend: "down",
   },
   {
     name: "eth_btc",
@@ -125,6 +168,15 @@ export const METRIC_DEFINITIONS: MetricDefinition[] = [
     detailTitle: "ETH held by strategic reserve entities",
     whyItMatters: "Institutional and treasury accumulation can reinforce conviction.",
     interpretationHint: "Large multi-month drawdowns can indicate weakening sponsorship.",
+    preferredTrend: "up",
+  },
+  {
+    name: "etf_flows_6m_usd",
+    label: "ETF spot net flows (6M cumul.)",
+    group: "Institutional",
+    detailTitle: "Institutional ETF capital flows",
+    whyItMatters: "Cumulative spot ETF flows reflect institutional sponsorship.",
+    interpretationHint: "Trigger T1.3 fires when 6M ETF flows are negative alongside SER drop.",
     preferredTrend: "up",
   },
   {

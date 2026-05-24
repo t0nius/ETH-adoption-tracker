@@ -150,11 +150,24 @@ export function evalT12(supplyHistory: Snapshot[]): TriggerEval {
   };
 }
 
+function countTailOver(
+  daily: Array<{ value: number }>,
+  threshold: number,
+): number {
+  let count = 0;
+  for (let i = daily.length - 1; i >= 0; i--) {
+    if (daily[i].value > threshold) count++;
+    else break;
+  }
+  return count;
+}
+
 // -------- T1.3 — ETF flows negative 6m AND SER -25% 6m -----------------------
 
 export function evalT13(
   serHistory: Snapshot[],
   etfManual: ManualState,
+  etfHistory?: Snapshot[],
 ): TriggerEval {
   const base = {
     trigger_name: "T1.3_etf_neg_and_ser_drop",
@@ -163,16 +176,23 @@ export function evalT13(
       "ETF cumulative net flows negative AND SER down >25% over the last 6 months.",
     threshold_value: -25,
   };
-  // ETF condition is manual (data not available auto). SER condition we can check.
   const serPoints = clean(serHistory);
   const daily = bucketDailyLast(serPoints);
+  const etfPoints = clean(etfHistory ?? []);
+  const etfLatest =
+    etfPoints.length > 0 ? etfPoints[etfPoints.length - 1].value : null;
+  const etfAutoNeg = etfLatest !== null && etfLatest < 0;
+  const etfManualNeg = etfManual?.is_triggered === true;
+  const etfNeg = etfAutoNeg || etfManualNeg;
+  const etfSource = etfAutoNeg ? "auto" : etfManualNeg ? "manual" : "none";
+
   if (daysCovered(serPoints) < 180) {
     return {
       ...base,
       status: "insufficient_data",
-      message: `SER history ${daysCovered(serPoints)} / 180 days. ETF flows require manual input (marker: setManualTrigger).`,
+      message: `SER history ${daysCovered(serPoints)} / 180 days. ETF 6M: ${etfLatest !== null ? fmtEtf(etfLatest) : etfManualNeg ? "manual negative" : "awaiting data"}.`,
       current_value: null,
-      metadata: { etf_manual: etfManual?.is_triggered ?? null },
+      metadata: { etf_manual: etfManualNeg, etf_flows_6m_usd: etfLatest, etf_source: etfSource },
     };
   }
   const recent = daily.slice(-180);
@@ -180,38 +200,48 @@ export function evalT13(
   const end = recent[recent.length - 1].value;
   const serDropPct = ((end - start) / start) * 100;
   const serDropMet = serDropPct <= -25;
-  const etfNeg = etfManual?.is_triggered === true;
 
   if (etfNeg && serDropMet) {
     return {
       ...base,
       status: "triggered",
-      message: `ETF flows marked negative 6m + SER dropped ${serDropPct.toFixed(1)}%.`,
+      message: `ETF 6M ${etfAutoNeg ? fmtEtf(etfLatest!) : "manual negative"} + SER dropped ${serDropPct.toFixed(1)}%.`,
       current_value: serDropPct,
+      metadata: { etf_source: etfSource, etf_flows_6m_usd: etfLatest, ser_drop_pct: serDropPct },
     };
   }
   if (etfNeg || serDropMet) {
     return {
       ...base,
       status: "partial",
-      message: `Only one sub-condition met. ETF negative: ${etfNeg}, SER drop: ${serDropPct.toFixed(1)}%.`,
+      message: `Only one sub-condition met. ETF negative (${etfSource}): ${etfNeg}, SER drop: ${serDropPct.toFixed(1)}%.`,
       current_value: serDropPct,
-      metadata: { etf_manual: etfNeg, ser_drop_pct: serDropPct },
+      metadata: { etf_manual: etfManualNeg, etf_flows_6m_usd: etfLatest, etf_source: etfSource, ser_drop_pct: serDropPct },
     };
   }
   return {
     ...base,
     status: "ok",
-    message: `Neither sub-condition met. SER change 6m: ${serDropPct.toFixed(1)}%.`,
+    message: `Neither sub-condition met. ETF 6M: ${etfLatest !== null ? fmtEtf(etfLatest) : "n/a"}, SER change 6m: ${serDropPct.toFixed(1)}%.`,
     current_value: serDropPct,
+    metadata: { etf_flows_6m_usd: etfLatest, etf_source: etfSource },
   };
+}
+
+function fmtEtf(usd: number) {
+  const abs = Math.abs(usd);
+  const sign = usd >= 0 ? "+" : "-";
+  if (abs >= 1e9) return `${sign}$${(abs / 1e9).toFixed(2)}B`;
+  if (abs >= 1e6) return `${sign}$${(abs / 1e6).toFixed(0)}M`;
+  return `${sign}$${abs.toFixed(0)}`;
 }
 
 // -------- T1.4 — Staking ratio drop >25% from peak OR exit queue > 2x entry --
 
 export function evalT14(
   stakingHistory: Snapshot[],
-  exitQueueManual: ManualState, // validator queue data unavailable
+  exitQueueManual: ManualState,
+  queueRatioHistory?: Snapshot[],
 ): TriggerEval {
   const base = {
     trigger_name: "T1.4_staking_drop_or_exit_queue",
@@ -233,23 +263,60 @@ export function evalT14(
   const current = points[points.length - 1].value;
   const dropPct = ((current - peak) / peak) * 100;
   const ratioCondition = dropPct <= -25;
-  const queueCondition = exitQueueManual?.is_triggered === true;
+
+  const queuePoints = clean(queueRatioHistory ?? []);
+  const queueDaily = bucketDailyLast(queuePoints);
+  const queueConsecutive =
+    queueDaily.length > 0 ? countTailOver(queueDaily, 2) : 0;
+  const queueAutoMet = queueConsecutive >= 90;
+  const queueManualMet = exitQueueManual?.is_triggered === true;
+  const queueCondition = queueAutoMet || queueManualMet;
+  const latestQueueRatio =
+    queueDaily.length > 0 ? queueDaily[queueDaily.length - 1].value : null;
 
   if (ratioCondition || queueCondition) {
+    const queueNote = queueAutoMet
+      ? `exit queue ${latestQueueRatio?.toFixed(2) ?? "—"}× for ${queueConsecutive}d`
+      : queueManualMet
+        ? "exit-queue manual flag set"
+        : "";
     return {
       ...base,
       status: "triggered",
-      message: `Triggered. Staking drop from peak: ${dropPct.toFixed(1)}%${queueCondition ? " (exit-queue manual flag also set)" : ""}.`,
+      message: `Triggered. Staking drop from peak: ${dropPct.toFixed(1)}%${queueNote ? ` · ${queueNote}` : ""}.`,
       current_value: dropPct,
-      metadata: { peak, current, exit_queue_manual: queueCondition },
+      metadata: {
+        peak,
+        current,
+        exit_queue_manual: queueManualMet,
+        queue_ratio: latestQueueRatio,
+        queue_consecutive_days: queueConsecutive,
+        queue_source: queueAutoMet ? "auto" : queueManualMet ? "manual" : "none",
+      },
     };
   }
+
+  if (queueConsecutive > 0 && queueConsecutive < 90) {
+    return {
+      ...base,
+      status: "warning",
+      message: `Exit queue ${latestQueueRatio?.toFixed(2) ?? "—"}× > 2× for ${queueConsecutive} / 90 days. Staking drop: ${dropPct.toFixed(1)}%.`,
+      current_value: dropPct,
+      metadata: {
+        peak,
+        current,
+        queue_ratio: latestQueueRatio,
+        queue_consecutive_days: queueConsecutive,
+      },
+    };
+  }
+
   return {
     ...base,
     status: "ok",
-    message: `Staking ratio ${current.toFixed(1)}% vs peak ${peak.toFixed(1)}% (drop ${dropPct.toFixed(1)}%). Exit queue: data unavailable.`,
+    message: `Staking ${current.toFixed(1)}% vs peak ${peak.toFixed(1)}% (drop ${dropPct.toFixed(1)}%). Exit/entry queue: ${latestQueueRatio !== null ? `${latestQueueRatio.toFixed(2)}×` : "awaiting API key"}.`,
     current_value: dropPct,
-    metadata: { peak, current },
+    metadata: { peak, current, queue_ratio: latestQueueRatio },
   };
 }
 

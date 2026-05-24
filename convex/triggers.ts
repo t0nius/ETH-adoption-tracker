@@ -179,7 +179,7 @@ export const _readAllForRecap = internalQuery({
   },
 });
 
-// -------- Main daily action: evaluate all 11 triggers, upsert state ---------
+// -------- Main daily action: evaluate all invalidation triggers, upsert state ---------
 
 export const evaluateAll = internalAction({
   args: {},
@@ -192,43 +192,40 @@ export const evaluateAll = internalAction({
 
     const [
       ethShare,
-      // supply history isn't currently a stored metric directly — we'd snapshot
-      // total ETH supply separately. For Phase 4 we proxy with staking_ratio's
-      // total_supply metadata if available; otherwise mark insufficient.
+      supplyHist,
       stakingHist,
       tpsHist,
       stablesHist,
       blobHist,
       rwaHist,
       serHist,
+      etfHist,
+      queueHist,
       etfManual,
       exitQueueManual,
       ...t3Manuals
     ] = await Promise.all([
       fetchHistory("eth_defi_share"),
+      fetchHistory("eth_total_supply"),
       fetchHistory("staking_ratio"),
       fetchHistory("tps_l1_l2"),
       fetchHistory("stables_supply_eth"),
       fetchHistory("blob_count_latest"),
       fetchHistory("rwa_eth_share"),
       fetchHistory("ser_total_eth"),
+      fetchHistory("etf_flows_6m_usd"),
+      fetchHistory("validator_queue_ratio"),
       fetchManual("T1.3_etf_neg_and_ser_drop"),
       fetchManual("T1.4_staking_drop_or_exit_queue"),
       ...T3_DEFINITIONS.map((t) => fetchManual(t.name)),
     ]);
 
-    // T1.2 supply growth — we don't snapshot total ETH supply directly yet.
-    // Use staking_ratio's metadata.totalSupply if present (stored in
-    // ultrasound.ts source). For Phase 4, mark insufficient_data with a clear
-    // message; once a dedicated supply snapshot is added it will start working.
-    const supplyHistFromStaking: Snapshot[] = []; // intentionally empty
-
     const now = Date.now();
     const evaluations: TriggerEval[] = [
       evalT11(ethShare),
-      evalT12(supplyHistFromStaking),
-      evalT13(serHist, etfManual),
-      evalT14(stakingHist, exitQueueManual),
+      evalT12(supplyHist),
+      evalT13(serHist, etfManual, etfHist),
+      evalT14(stakingHist, exitQueueManual, queueHist),
       evalT25(tpsHist),
       evalT26(stablesHist),
       evalT27(blobHist),

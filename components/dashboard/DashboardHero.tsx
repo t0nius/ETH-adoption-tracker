@@ -1,70 +1,64 @@
+"use client";
+
 import Link from "next/link";
 import { HeroKpi } from "./HeroKpi";
+import { InfoHint } from "@/components/InfoHint";
+import { PRODUCT_SUBTITLE } from "@/lib/product";
+
+type ScorePair = { score: number; label: string };
 
 type Props = {
-  regimeScore: number;
-  regimeLabel: string;
-  okCount: number;
-  totalMetrics: number;
-  avgQuality: number;
+  fundamental: ScorePair;
+  dataHealth: ScorePair;
   triggeredCount: number;
   warningCount: number;
 };
 
 export function DashboardHero({
-  regimeScore,
-  regimeLabel,
-  okCount,
-  totalMetrics,
-  avgQuality,
+  fundamental,
+  dataHealth,
   triggeredCount,
   warningCount,
 }: Props) {
   return (
     <section className="surface">
-      <div className="flex flex-col gap-6 px-5 py-7 sm:px-8 sm:py-9 lg:flex-row lg:items-end lg:justify-between">
-        <div className="max-w-2xl">
+      <div className="flex flex-col gap-5 px-5 py-5 sm:flex-row sm:items-end sm:justify-between sm:px-8 sm:py-6">
+        <div className="max-w-xl">
           <p className="text-eyebrow">LONG-ETH THESIS MONITOR</p>
-          <h1 className="mt-4 font-display text-[44px] leading-[0.98] text-ink sm:text-[58px]">
-            ETH ADOPTION
-            <br />
-            TRACKER
+          <h1 className="mt-3 font-display text-[32px] leading-[0.98] text-ink sm:text-[44px]">
+            ETH ADOPTION TRACKER
           </h1>
-          <div className="rule mt-5 max-w-[200px]" />
-          <p className="mt-5 max-w-xl text-sm leading-relaxed text-ink-soft">
-            11 fundamentals · 11 invalidation triggers · daily evaluation.
-            Designed to tell you{" "}
-            <span className="text-ink">when to stop being long ETH</span>, not when
-            to enter.
-          </p>
-          <div className="mt-6 flex flex-wrap items-center gap-2">
+          <div className="rule mt-4 max-w-[160px]" />
+          <p className="mt-4 text-sm leading-relaxed text-ink-soft">{PRODUCT_SUBTITLE}</p>
+          <div className="mt-4 flex flex-wrap items-center gap-2">
             <Link href="/triggers" className="btn">
-              trigger radar →
+              triggers →
             </Link>
-            <a href="/api/export" download className="btn">
-              export json
-            </a>
             <Link href="/methodology" className="btn">
-              methodology
+              method
             </Link>
+            <span className="inline-flex items-center gap-1">
+              <a href="/api/export" download className="btn">
+                export
+              </a>
+              <InfoHint
+                label="Export API note"
+                hint="Local: works without token. Production on Vercel requires EXPORT_API_TOKEN."
+              />
+            </span>
           </div>
         </div>
 
-        <div className="grid w-full grid-cols-2 gap-2 sm:max-w-md">
+        <div className="grid w-full grid-cols-3 gap-2 sm:max-w-md">
           <HeroKpi
-            label="REGIME"
-            value={String(regimeScore).padStart(3, "0")}
-            sub={regimeLabel}
+            label="FUNDAMENTALS"
+            value={String(fundamental.score).padStart(3, "0")}
+            sub={fundamental.label}
           />
           <HeroKpi
-            label="COVERAGE"
-            value={`${okCount}/${totalMetrics}`}
-            sub="live metrics"
-          />
-          <HeroKpi
-            label="QUALITY"
-            value={`${avgQuality.toFixed(0)}`}
-            sub="avg / 100"
+            label="DATA"
+            value={String(dataHealth.score).padStart(3, "0")}
+            sub={dataHealth.label}
           />
           <HeroKpi
             label="TRIGGERS"
@@ -80,7 +74,7 @@ export function DashboardHero({
                 ? "tripped"
                 : warningCount > 0
                   ? "warning"
-                  : "all clear"
+                  : "clear"
             }
             tone={triggeredCount > 0 ? "signal" : "ink"}
           />

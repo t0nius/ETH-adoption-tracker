@@ -5,6 +5,11 @@ export const dynamic = "force-dynamic";
 import Link from "next/link";
 import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
+import { GLOSSARY } from "@/lib/glossary";
+import {
+  BOARD_METRIC_COUNT,
+  INVALIDATION_TRIGGER_COUNT,
+} from "@/lib/product";
 
 type Trigger = {
   trigger_name: string;
@@ -65,8 +70,8 @@ export default function MethodologyPage() {
           <div className="rule mt-5 max-w-[200px]" />
           <p className="mt-5 max-w-2xl text-sm leading-relaxed text-ink-soft">
             This is a <span className="text-ink">thesis-monitoring system</span>, not
-            a trading signal generator. The 11 triggers below define when the
-            long-ETH thesis would be invalidated. The 11 metrics feed those
+            a trading signal generator. The {INVALIDATION_TRIGGER_COUNT} triggers below define when the
+            long-ETH thesis would be invalidated. The {BOARD_METRIC_COUNT} board metrics feed those
             triggers; sparklines and deltas are decoration around the real
             deliverable: <span className="text-ink">trigger state</span>.
           </p>
@@ -74,6 +79,21 @@ export default function MethodologyPage() {
             ← dashboard
           </Link>
         </div>
+      </section>
+
+      {/* Glossary */}
+      <section id="glossary" className="surface mt-4 scroll-mt-24">
+        <header className="border-b border-[color:var(--line)] px-4 py-2">
+          <p className="text-eyebrow">GLOSSARY</p>
+        </header>
+        <dl className="divide-y divide-[color:var(--line)]">
+          {GLOSSARY.map((entry) => (
+            <div key={entry.term} className="px-4 py-3">
+              <dt className="font-mono text-sm font-semibold text-ink">{entry.term}</dt>
+              <dd className="mt-1.5 text-sm leading-relaxed text-ink-soft">{entry.def}</dd>
+            </div>
+          ))}
+        </dl>
       </section>
 
       {/* Reading order */}
@@ -90,8 +110,8 @@ export default function MethodologyPage() {
             },
             {
               n: "02",
-              title: "DATA QUALITY",
-              body: "Quality < 70 means the underlying source is unreliable. Don't react to a single signal from a fragile source.",
+              title: "DATA HEALTH",
+              body: "Check the DATA score and stale count before reacting. A weak fundamental read may just mean missing API keys.",
             },
             {
               n: "03",
@@ -115,29 +135,55 @@ export default function MethodologyPage() {
         </ol>
       </section>
 
-      {/* Regime score */}
+      {/* Scores */}
       <section className="surface mt-4">
         <header className="border-b border-[color:var(--line)] px-4 py-2">
-          <p className="text-eyebrow">REGIME SCORE (0–100)</p>
+          <p className="text-eyebrow">DASHBOARD SCORES (0–100)</p>
         </header>
-        <div className="px-4 py-4">
-          <p className="text-sm leading-relaxed text-ink-soft">
-            The dashboard regime score is computed server-side from live metric
-            coverage, data freshness, and trigger state. It is not a price
-            forecast — it summarizes whether the adoption stack looks
-            constructive or fragile.
+        <div className="px-4 py-4 space-y-4">
+          <div>
+            <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink">
+              Fundamentals
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+              Weighted 30-day trends on <strong className="text-ink">live</strong> metrics
+              only (stale sources excluded — they belong in Data). Pillar weights:
+              Monetary 35% · Institutional 35% · Usage 20% · Infrastructure 10%.
+              ETH/BTC excluded (market ratio, not adoption). Minus 15 pts per tripped
+              Tier-1/2 trigger. Labels: ≥80 STRONG · ≥65 STEADY · ≥50 MIXED · ≥
+              35 SOFT · &lt;35 WEAK.
+            </p>
+          </div>
+          <div>
+            <p className="font-mono text-xs font-semibold uppercase tracking-[0.12em] text-ink">
+              Data health
+            </p>
+            <p className="mt-2 text-sm leading-relaxed text-ink-soft">
+              Coverage × 100 on the {BOARD_METRIC_COUNT} board metrics, minus stale
+              (−10 each), aged &gt;24h (−3 each). Does <strong className="text-ink">not</strong>{" "}
+              penalize trigger state — use the Triggers card for invalidation.
+              Labels: ≥85 SOLID · ≥70 OK · ≥50 PATCHY · &lt;50 GAPS.
+            </p>
+          </div>
+          <p className="text-xs text-dim">
+            Implementation: <code className="text-ink-soft">lib/regime.ts</code>.
+            Neither score is a price forecast.
           </p>
-          <ul className="mt-4 space-y-2 font-mono text-xs text-muted">
-            <li>· Live metrics (all 11 OK): up to 40 pts</li>
-            <li>· No stale sources: up to 20 pts</li>
-            <li>· No aged (&gt;24h) OK metrics: up to 15 pts</li>
-            <li>· No tripped triggers: up to 15 pts</li>
-            <li>· No warning/partial triggers: up to 10 pts</li>
-          </ul>
-          <p className="mt-4 text-xs text-dim">
-            Labels: ≥80 CONSTRUCTIVE · ≥60 CAUTIOUS · ≥40 FRAGILE · &lt;40
-            STRESSED. Implementation:{" "}
-            <code className="text-ink-soft">lib/regime.ts</code>.
+        </div>
+      </section>
+
+      {/* Trigger eval modes */}
+      <section className="surface mt-4">
+        <header className="border-b border-[color:var(--line)] px-4 py-2">
+          <p className="text-eyebrow">TRIGGER DATA MODES</p>
+        </header>
+        <div className="px-4 py-4 text-sm text-ink-soft">
+          <p className="leading-relaxed">
+            Each rule shows a badge: <span className="text-ink">AUTO</span> (fully
+            computed), <span className="text-ink">PARTIAL</span> (some sub-conditions
+            manual), <span className="text-ink">MANUAL</span> (Tier-3 discretionary).
+            T1.2 uses hidden <code className="text-[10px]">eth_total_supply</code>{" "}
+            snapshots from ultrasound.money.
           </p>
         </div>
       </section>
@@ -206,7 +252,9 @@ export default function MethodologyPage() {
       {/* Trigger governance */}
       <section className="surface mt-4">
         <header className="border-b border-[color:var(--line)] px-4 py-2">
-          <p className="text-eyebrow">TRIGGER GOVERNANCE · 11 RULES · 3 TIERS</p>
+          <p className="text-eyebrow">
+            TRIGGER GOVERNANCE · {INVALIDATION_TRIGGER_COUNT} RULES · 3 TIERS
+          </p>
         </header>
         <div className="px-4 py-4">
           <p className="text-sm leading-relaxed text-ink-soft">
@@ -265,9 +313,9 @@ export default function MethodologyPage() {
       </section>
 
       {/* Known gaps */}
-      <section className="surface mt-4">
+      <section id="manual-data" className="surface mt-4 scroll-mt-24">
         <header className="border-b border-[color:var(--line)] px-4 py-2">
-          <p className="text-eyebrow">KNOWN GAPS · 3 SOURCES SKIPPED</p>
+          <p className="text-eyebrow">KNOWN GAPS · MANUAL SUB-CONDITIONS</p>
         </header>
         <div className="px-4 py-4">
           <p className="text-sm leading-relaxed text-ink-soft">
@@ -325,8 +373,9 @@ export default function MethodologyPage() {
           <div className="bg-[color:var(--bg-1)] px-4 py-3">
             <p className="text-eyebrow">BACKEND</p>
             <p className="mt-2 font-mono text-xs leading-relaxed text-ink-soft">
-              Convex (2 indexed tables). Hourly cron pulls 11 sources in parallel.
-              Daily cron re-evaluates 11 triggers. Weekly cron pushes Resend
+              Convex (2 indexed tables). Hourly cron snapshots {BOARD_METRIC_COUNT} board metrics
+              (+ hidden supply for T1.2). Daily cron re-evaluates {INVALIDATION_TRIGGER_COUNT} triggers.
+              Weekly cron pushes Resend
               recap. Telegram on transition only.
             </p>
           </div>

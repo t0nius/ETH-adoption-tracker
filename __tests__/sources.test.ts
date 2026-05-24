@@ -5,6 +5,9 @@ import { getStablecoinSupplyEthereum } from "../lib/sources/defillama-stables";
 import { getRwaShareEthereum } from "../lib/sources/defillama-rwa";
 import { getL2Tvl } from "../lib/sources/l2beat";
 import { getBurnRateDaily, getStakingRatio } from "../lib/sources/ultrasound";
+import { getNetIssuanceDaily, getSupplyInflationAnnualized } from "../lib/sources/supply-metrics";
+import { getValidatorQueueRatio } from "../lib/sources/beaconcha-queue";
+import { getEtfFlows6mUsd } from "../lib/sources/etf-flows";
 import { getBlobCountLatest } from "../lib/sources/rpc-blob";
 import { getSerTotalEth, aggregate } from "../lib/sources/ser";
 
@@ -152,6 +155,55 @@ describe("data sources — happy path with mocked fetch", () => {
     const r = await getBlobCountLatest();
     expect(r.status).toBe("ok");
     expect(r.value).toBe(3);
+  });
+
+  it("supply net issuance from hourly d1 delta", async () => {
+    const now = Date.now();
+    const dayAgo = now - 86_400_000;
+    global.fetch = mockFetch(() => ({
+      d1: [
+        { supply: 120_000_000, timestamp: new Date(dayAgo).toISOString() },
+        { supply: 120_001_000, timestamp: new Date(now).toISOString() },
+      ],
+      since_merge: [
+        { supply: 119_000_000, timestamp: new Date(dayAgo - 180 * 86_400_000).toISOString() },
+        { supply: 120_000_000, timestamp: new Date(dayAgo).toISOString() },
+      ],
+    })) as unknown as typeof fetch;
+    const net = await getNetIssuanceDaily();
+    expect(net.status).toBe("ok");
+    expect(net.value).toBeCloseTo(1000, 0);
+    const infl = await getSupplyInflationAnnualized();
+    expect(infl.status).toBe("ok");
+    expect(typeof infl.value).toBe("number");
+  });
+
+  it("validator queue ratio from beaconcha", async () => {
+    const prevKey = process.env.BEACONCHAIN_API_KEY;
+    process.env.BEACONCHAIN_API_KEY = "test-key";
+    global.fetch = vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        data: {
+          deposit_queue: { balance: "32000000000000000000" },
+          exit_queue: { balance: "64000000000000000000" },
+        },
+      }),
+    })) as unknown as typeof fetch;
+    const r = await getValidatorQueueRatio();
+    process.env.BEACONCHAIN_API_KEY = prevKey;
+    expect(r.status).toBe("ok");
+    expect(r.value).toBeCloseTo(2, 2);
+  });
+
+  it("ETF 6M flows stale without API key", async () => {
+    const prev = process.env.COINGLASS_API_KEY;
+    delete process.env.COINGLASS_API_KEY;
+    delete process.env.BLOCKWORKS_API_KEY;
+    const r = await getEtfFlows6mUsd();
+    process.env.COINGLASS_API_KEY = prev;
+    expect(r.status).toBe("stale");
   });
 });
 

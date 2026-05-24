@@ -83,64 +83,83 @@ const KIND_LABEL: Record<Row["kind"], string> = {
   surprise: "VOLATILE",
 };
 
+function deltaColor(kind: Row["kind"]) {
+  if (kind === "best") return "var(--up)";
+  if (kind === "worst") return "var(--down)";
+  return "var(--dim)";
+}
+
 export function TopMoves({ bundles }: { bundles: MetricBundle[] }) {
   const rows = pickRows(bundles);
   if (rows.length === 0) return null;
 
   return (
-    <section className="surface mt-4">
+    <section className="surface section-gap">
       <header className="flex items-center justify-between border-b border-[color:var(--line)] px-4 py-2">
         <p className="text-eyebrow">TOP MOVES · 30D</p>
       </header>
-      <table className="w-full font-mono text-xs">
+
+      {/* Mobile cards */}
+      <div className="divide-y divide-[color:var(--line)] md:hidden">
+        {rows.map((r) => (
+          <div key={r.kind + r.bundle.metric_name} className="px-4 py-3">
+            <p className="font-mono text-[10px] uppercase text-muted">{KIND_LABEL[r.kind]}</p>
+            <Link
+              href={`/metrics/${r.bundle.metric_name}`}
+              className="mt-1 block text-sm text-ink hover:underline"
+            >
+              {r.metricLabel}
+            </Link>
+            <div className="mt-2 flex items-center justify-between gap-2">
+              <span className="font-mono tabular text-sm" style={{ color: deltaColor(r.kind) }}>
+                {r.delta30 > 0 ? "+" : r.delta30 < 0 ? "−" : ""}
+                {Math.abs(r.delta30).toFixed(1)}%
+              </span>
+              <div className="w-28">
+                <Sparkline data={r.bundle.history} height={32} days={30} />
+              </div>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Desktop table */}
+      <table className="hidden w-full font-mono text-xs md:table">
         <thead>
           <tr className="border-b border-[color:var(--line-dim)] text-dim">
             <th className="px-4 py-2 text-left text-[10px] font-medium uppercase tracking-[0.14em]">SIGNAL</th>
             <th className="px-4 py-2 text-left text-[10px] font-medium uppercase tracking-[0.14em]">METRIC</th>
             <th className="px-4 py-2 text-right text-[10px] font-medium uppercase tracking-[0.14em]">30D Δ</th>
-            <th className="hidden px-4 py-2 text-left text-[10px] font-medium uppercase tracking-[0.14em] sm:table-cell">
-              SHAPE · 30D
-            </th>
+            <th className="px-4 py-2 text-left text-[10px] font-medium uppercase tracking-[0.14em]">SHAPE · 30D</th>
             <th className="px-4 py-2 text-right text-[10px] font-medium uppercase tracking-[0.14em]">VOL30</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => {
-            const deltaTone =
-              r.kind === "best"
-                ? "var(--ink-soft)"
-                : r.kind === "worst"
-                  ? "var(--muted)"
-                  : "var(--dim)";
-            return (
-              <tr
-                key={r.kind + r.bundle.metric_name}
-                className="border-b border-[color:var(--line-dim)] hover:bg-[color:var(--bg-2)]"
-              >
-                <td className="px-4 py-2.5 text-muted">{KIND_LABEL[r.kind]}</td>
-                <td className="px-4 py-2.5">
-                  <Link
-                    href={`/metrics/${r.bundle.metric_name}`}
-                    className="text-ink hover:underline"
-                  >
-                    {r.metricLabel}
-                  </Link>
-                </td>
-                <td className="px-4 py-2.5 text-right tabular" style={{ color: deltaTone }}>
-                  {r.delta30 > 0 ? "+" : r.delta30 < 0 ? "−" : ""}
-                  {Math.abs(r.delta30).toFixed(1)}%
-                </td>
-                <td className="hidden px-4 py-2.5 sm:table-cell">
-                  <div className="w-36">
-                    <Sparkline data={r.bundle.history} height={40} days={30} />
-                  </div>
-                </td>
-                <td className="px-4 py-2.5 text-right tabular text-muted">
-                  {r.volatility30 === null ? "—" : `${r.volatility30.toFixed(1)}%`}
-                </td>
-              </tr>
-            );
-          })}
+          {rows.map((r) => (
+            <tr
+              key={r.kind + r.bundle.metric_name}
+              className="border-b border-[color:var(--line-dim)] hover:bg-[color:var(--bg-2)]"
+            >
+              <td className="px-4 py-2.5 text-muted">{KIND_LABEL[r.kind]}</td>
+              <td className="px-4 py-2.5">
+                <Link href={`/metrics/${r.bundle.metric_name}`} className="text-ink hover:underline">
+                  {r.metricLabel}
+                </Link>
+              </td>
+              <td className="px-4 py-2.5 text-right tabular" style={{ color: deltaColor(r.kind) }}>
+                {r.delta30 > 0 ? "+" : r.delta30 < 0 ? "−" : ""}
+                {Math.abs(r.delta30).toFixed(1)}%
+              </td>
+              <td className="px-4 py-2.5">
+                <div className="w-36">
+                  <Sparkline data={r.bundle.history} height={40} days={30} />
+                </div>
+              </td>
+              <td className="px-4 py-2.5 text-right tabular text-muted">
+                {r.volatility30 === null ? "—" : `${r.volatility30.toFixed(1)}%`}
+              </td>
+            </tr>
+          ))}
         </tbody>
       </table>
     </section>

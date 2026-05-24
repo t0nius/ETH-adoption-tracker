@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import {
   query,
+  mutation,
   internalMutation,
   internalQuery,
   internalAction,
@@ -11,7 +12,17 @@ import {
   SNAPSHOT_RETENTION_DAYS,
   downsampleDaily,
 } from "../lib/history";
-import { computeRegimeScore, regimeLabel } from "../lib/regime";
+import { METRIC_ORDER } from "../lib/metrics";
+import { fmtUSD } from "../lib/format";
+import { requireSecretInProduction } from "../lib/production";
+import {
+  fundamentalLabel,
+  dataHealthLabel,
+  computeFundamentalScore,
+  computeDataHealthScore,
+} from "../lib/regime";
+
+const DISPLAY_METRIC_NAMES = METRIC_ORDER;
 
 const snapshotShape = v.object({
   _id: v.id("metrics_snapshots"),
@@ -64,14 +75,19 @@ export const METRIC_NAMES = [
   "tps_l1_l2",
   "stables_supply_eth",
   "burn_24h",
+  "net_issuance_daily",
+  "supply_inflation_annualized",
   "staking_ratio",
+  "validator_queue_ratio",
   "l2_tvl",
   "eth_btc",
   "daa_l1_l2",
   "rwa_eth_share",
   "blob_count_latest",
   "ser_total_eth",
+  "etf_flows_6m_usd",
   "eth_defi_share",
+  "eth_total_supply",
 ] as const;
 
 type HistoryPoint = {
@@ -497,6 +513,8 @@ const triggerBriefShape = v.object({
   tier: v.number(),
   status: v.string(),
   message: v.string(),
+  description: v.string(),
+  evaluated_at: v.number(),
 });
 
 const sourceHealthShape = v.object({
@@ -521,17 +539,17 @@ export const dashboardOverview = query({
     bundles: v.array(bundleShape),
     sourceHealth: v.array(sourceHealthShape),
     triggers: v.array(triggerBriefShape),
-    regime: v.object({
-      score: v.number(),
-      label: v.string(),
+    scores: v.object({
+      fundamental: v.object({ score: v.number(), label: v.string() }),
+      dataHealth: v.object({ score: v.number(), label: v.string() }),
     }),
     fragile: v.array(sourceHealthShape),
   }),
   handler: async (ctx) => {
     const sinceMs = Date.now() - DASHBOARD_HISTORY_DAYS * 24 * 60 * 60 * 1000;
-    const total = METRIC_NAMES.length;
+    const total = DISPLAY_METRIC_NAMES.length;
 
-    const bundles = await Promise.all(
+    const allBundles = await Promise.all(
       METRIC_NAMES.map(async (name) => {
         const [latestRows, historyRows] = await Promise.all([
           ctx.db
@@ -604,6 +622,9 @@ export const dashboardOverview = query({
       }),
     );
 
+    const displaySet = new Set<string>(DISPLAY_METRIC_NAMES);
+    const bundles = allBundles.filter((b) => displaySet.has(b.metric_name));
+
     const sourceHealth = bundles.map((b) => ({
       metric_name: b.metric_name,
       staleRate7d: b.analytics.staleRate7d,
@@ -619,6 +640,8 @@ export const dashboardOverview = query({
         tier: t.tier,
         status: t.status,
         message: t.message,
+        description: t.description,
+        evaluated_at: t.evaluated_at,
       }))
       .sort((a, b) => a.trigger_name.localeCompare(b.trigger_name));
 
@@ -631,19 +654,27 @@ export const dashboardOverview = query({
     const warningCount = triggers.filter(
       (t) => t.status === "warning" || t.status === "partial",
     ).length;
-    const noDataCount = triggers.filter(
-      (t) => t.status === "insufficient_data" || t.status === "needs_manual",
+
+    const tier12Triggered = triggers.filter(
+      (t) =>
+        (t.tier === 1 || t.tier === 2) && t.status === "triggered",
     ).length;
 
-    const score = computeRegimeScore({
+    const dataHealthScore = computeDataHealthScore({
       liveCount: okCount,
       totalMetrics: total,
       staleCount,
       agedCount,
-      triggeredCount,
-      warningCount,
-      noDataCount,
     });
+
+    const fundamentalScore = computeFundamentalScore(
+      bundles.map((b) => ({
+        metric_name: b.metric_name,
+        status: b.snapshot.status,
+        delta30: b.analytics.delta30,
+      })),
+      { tier12Triggered },
+    );
 
     const fragile = [...sourceHealth]
       .filter((s) => s.qualityScore < 70)
@@ -654,8 +685,50 @@ export const dashboardOverview = query({
       bundles,
       sourceHealth,
       triggers,
-      regime: { score, label: regimeLabel(score) },
+      scores: {
+        fundamental: {
+          score: fundamentalScore,
+          label: fundamentalLabel(fundamentalScore),
+        },
+        dataHealth: {
+          score: dataHealthScore,
+          label: dataHealthLabel(dataHealthScore),
+        },
+      },
       fragile,
     };
+  },
+});
+
+/** Weekly manual ETF 6M cumulative flow (USD) when CoinGlass/Blockworks API unavailable. */
+export const submitManualEtfFlows = mutation({
+  args: {
+    value_usd: v.number(),
+    note: v.optional(v.string()),
+    admin_token: v.optional(v.string()),
+    actor: v.optional(v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const requiredToken = process.env.MANUAL_TRIGGER_ADMIN_TOKEN;
+    requireSecretInProduction("MANUAL_TRIGGER_ADMIN_TOKEN", requiredToken);
+    if (requiredToken && args.admin_token !== requiredToken) {
+      throw new Error("Unauthorized manual metric submission");
+    }
+
+    const ts = Date.now();
+    const formatted = `${args.value_usd >= 0 ? "+" : ""}${fmtUSD(args.value_usd, 2)}`;
+    await ctx.db.insert("metrics_snapshots", {
+      metric_name: "etf_flows_6m_usd",
+      value: args.value_usd,
+      status: "ok",
+      timestamp: ts,
+      source: "manual weekly input",
+      formatted,
+      unit: "USD",
+      metadata: { note: args.note, actor: args.actor },
+    });
+    await ctx.scheduler.runAfter(0, internal.triggers.evaluateAll, {});
+    return null;
   },
 });

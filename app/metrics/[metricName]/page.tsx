@@ -129,6 +129,38 @@ export default function MetricDetailPage() {
 
   return (
     <main className="mx-auto max-w-5xl px-4 py-6 sm:px-8">
+      <nav className="mb-4 font-mono text-[11px] text-dim" aria-label="Breadcrumb">
+        <Link href="/" className="hover:text-ink-soft">
+          Dashboard
+        </Link>
+        <span className="mx-1.5">›</span>
+        <span className="text-muted">{def.group}</span>
+        <span className="mx-1.5">›</span>
+        <span className="text-ink-soft">{def.label}</span>
+      </nav>
+
+      {/* Why it matters + linked triggers */}
+      <section className="surface mb-4">
+        <header className="border-b border-[color:var(--line)] px-4 py-2">
+          <p className="text-eyebrow">WHY IT MATTERS</p>
+        </header>
+        <div className="px-4 py-4">
+          <p className="text-sm leading-relaxed text-ink-soft">{def.whyItMatters}</p>
+          {related.length > 0 ? (
+            <div className="mt-4 border-t border-[color:var(--line)] pt-3">
+              <p className="text-eyebrow">LINKED TRIGGERS</p>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {related.map((tr) => (
+                  <Link key={tr} href="/triggers" className="btn text-[11px]">
+                    {tr.replace(/^T\d\.\d_/, "").replace(/_/g, " ")}
+                  </Link>
+                ))}
+              </div>
+            </div>
+          ) : null}
+        </div>
+      </section>
+
       <section className="surface">
         <div className="px-5 py-6 sm:px-8 sm:py-8">
           <div className="flex flex-wrap items-start justify-between gap-4">
@@ -139,9 +171,6 @@ export default function MetricDetailPage() {
               <h1 className="mt-3 font-display text-[36px] leading-[1.05] text-ink sm:text-[44px]">
                 {def.detailTitle.toUpperCase()}
               </h1>
-              <p className="mt-3 max-w-2xl text-sm leading-relaxed text-ink-soft">
-                {def.whyItMatters}
-              </p>
               <p className="mt-1 max-w-2xl font-mono text-[11px] text-muted">
                 {def.interpretationHint}
               </p>
@@ -275,20 +304,6 @@ export default function MetricDetailPage() {
         </section>
       ) : null}
 
-      {related.length > 0 ? (
-        <section className="surface mt-4">
-          <header className="border-b border-[color:var(--line)] px-4 py-2">
-            <p className="text-eyebrow">LINKED TRIGGERS</p>
-          </header>
-          <div className="flex flex-wrap gap-1.5 px-4 py-4">
-            {related.map((tr) => (
-              <Link key={tr} href="/triggers" className="btn">
-                {tr}
-              </Link>
-            ))}
-          </div>
-        </section>
-      ) : null}
 
       {snapshot ? (
         <section className="surface mt-4 px-4 py-3 font-mono text-[11px]">

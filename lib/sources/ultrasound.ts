@@ -49,7 +49,7 @@ type EffectiveBalanceSum = {
   timestamp?: string;
 };
 
-async function fetchSupply(): Promise<number> {
+export async function fetchSupply(): Promise<number> {
   const res = await fetch("https://ultrasound.money/api/v2/fees/supply-over-time");
   if (!res.ok) throw new Error(`supply HTTP ${res.status}`);
   const data = (await res.json()) as SupplyOverTime;
@@ -85,6 +85,27 @@ export async function getBurnRateDaily(): Promise<MetricResult> {
     };
   } catch (e) {
     return stale(NAME, LABEL, SOURCE_BURN, e instanceof Error ? e.message : String(e));
+  }
+}
+
+/** Total ETH supply (L1) — used for T1.2 supply-growth trigger; not shown on the board (see `eth_total_supply`). */
+export async function getEthTotalSupply(): Promise<MetricResult> {
+  const NAME = "eth_total_supply";
+  const LABEL = "ETH total supply";
+  try {
+    const supply = await fetchSupply();
+    return {
+      name: NAME,
+      label: LABEL,
+      status: "ok",
+      value: supply,
+      formatted: fmtNum(supply, 0),
+      unit: "ETH",
+      source: SOURCE_SUPPLY,
+      fetchedAt: new Date().toISOString(),
+    };
+  } catch (e) {
+    return stale(NAME, LABEL, SOURCE_SUPPLY, e instanceof Error ? e.message : String(e));
   }
 }
 
