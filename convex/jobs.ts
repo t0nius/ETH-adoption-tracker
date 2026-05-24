@@ -55,6 +55,9 @@ function metricToPayload(m: MetricResult, ts: number): SnapshotPayload {
   };
 }
 
+const MANUAL_ETF_SOURCE = "manual weekly input";
+const MANUAL_ETF_GRACE_MS = 7 * 24 * 60 * 60 * 1000;
+
 // Hourly snapshot: fetch all board metrics in parallel, write rows to Convex.
 export const snapshotAll = internalAction({
   args: {},
@@ -148,6 +151,18 @@ export const snapshotAll = internalAction({
     let inserted = 0;
     let staleCount = 0;
     for (const m of metrics) {
+      if (m.status === "stale" && m.name === "etf_flows_6m_usd") {
+        const latestOk = await ctx.runQuery(internal.snapshots.latestOkSnapshot, {
+          metric_name: m.name,
+        });
+        if (
+          latestOk &&
+          latestOk.source === MANUAL_ETF_SOURCE &&
+          Date.now() - latestOk.timestamp < MANUAL_ETF_GRACE_MS
+        ) {
+          continue;
+        }
+      }
       await ctx.runMutation(internal.snapshots.insert, metricToPayload(m, ts));
       inserted++;
       if (m.status === "stale") staleCount++;

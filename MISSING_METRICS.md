@@ -10,8 +10,8 @@ Ce fichier liste les métriques **prévues, implémentées ou encore partielles*
 |----------|--------|--------|---------|
 | `net_issuance_daily` | Monetary | ultrasound.money supply-over-time | T1.2 (contexte) |
 | `supply_inflation_annualized` | Monetary | ultrasound.money (fenêtre 180j) | T1.2 |
-| `etf_flows_6m_usd` | Institutional | CoinGlass v4 ou saisie manuelle | T1.3 |
-| `validator_queue_ratio` | Monetary | beaconcha.in V2 `/ethereum/queues` | T1.4 |
+| `etf_flows_6m_usd` | Institutional | Farside via jina.ai proxy (gratuit) · CoinGlass · saisie manuelle | T1.3 |
+| `validator_queue_ratio` | Monetary | PublicNode Beacon API (gratuit) · beaconcha.in V2 | T1.4 |
 | `eth_total_supply` | *(hidden)* | ultrasound.money | T1.2 (série brute) |
 
 Encart dashboard : **Monetary Health** (burn + net issuance + inflation annualisée).
@@ -22,13 +22,13 @@ Encart dashboard : **Monetary Health** (burn + net issuance + inflation annualis
 
 | Variable | Usage | Coût |
 |----------|-------|------|
-| `BEACONCHAIN_API_KEY` | Exit/entry queue ratio (T1.4) | Gratuit — [beaconcha.in/login](https://beaconcha.in/login) |
-| `COINGLASS_API_KEY` | ETF flows 6M USD (T1.3) | Plan payant CoinGlass — header `CG-API-KEY` |
+| `BEACONCHAIN_API_KEY` | Exit/entry queue ratio (optionnel — PublicNode par défaut) | Essai 30j puis payant — [beaconcha.in/login](https://beaconcha.in/login) |
+| `COINGLASS_API_KEY` | ETF flows 6M USD (optionnel — Farside par défaut) | Plan payant CoinGlass — header `CG-API-KEY` |
 | `BLOCKWORKS_API_KEY` | Fallback ETF (optionnel) | Si disponible |
 
-Sans clé ETF : champ numérique hebdo sur `/triggers` (`submitManualEtfFlows`).
+Sans source auto ETF : champ numérique hebdo sur `/triggers` (`submitManualEtfFlows`) — préservé 7 jours même si le job horaire échoue.
 
-Sans clé beaconcha : toggle manuel T1.4 ou checklist hebdo.
+Sans clé beaconcha : PublicNode Beacon API (gratuit, sans inscription).
 
 ---
 
@@ -54,4 +54,4 @@ Pas de trigger T1/T2 — contexte seulement. Nécessite clé payante ou Dune.
 
 - **14 métriques** affichées sur le board (+ `eth_total_supply` caché pour T1.2)
 - **3 nouvelles** live : supply nette, inflation annualisée, ETF 6M, queue ratio
-- ETF et queue : **automatisés si clés**, sinon fallback manuel documenté
+- ETF et queue : **automatisés sans clé** (Farside + PublicNode) ; clés API = option premium

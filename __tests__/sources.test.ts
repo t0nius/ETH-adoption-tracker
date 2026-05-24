@@ -7,7 +7,13 @@ import { getL2Tvl } from "../lib/sources/l2beat";
 import { getBurnRateDaily, getStakingRatio } from "../lib/sources/ultrasound";
 import { getNetIssuanceDaily, getSupplyInflationAnnualized } from "../lib/sources/supply-metrics";
 import { getValidatorQueueRatio } from "../lib/sources/beaconcha-queue";
-import { getEtfFlows6mUsd } from "../lib/sources/etf-flows";
+import {
+  getEtfFlows6mUsd,
+  parseFarsideEtfHtml,
+  parseFarsideMarkdown,
+  parseFarsideJinaPlaintext,
+  sumFarside6mUsd,
+} from "../lib/sources/etf-flows";
 import { getBlobCountLatest } from "../lib/sources/rpc-blob";
 import { getSerTotalEth, aggregate } from "../lib/sources/ser";
 
@@ -197,12 +203,164 @@ describe("data sources — happy path with mocked fetch", () => {
     expect(r.value).toBeCloseTo(2, 2);
   });
 
-  it("ETF 6M flows stale without API key", async () => {
-    const prev = process.env.COINGLASS_API_KEY;
+  it("validator queue ratio from PublicNode without API key", async () => {
+    const prevKey = process.env.BEACONCHAIN_API_KEY;
+    delete process.env.BEACONCHAIN_API_KEY;
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("pending_initialized")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [{ balance: "32000000000" }, { balance: "32000000000" }],
+          }),
+        };
+      }
+      if (url.includes("pending_queued")) {
+        return { ok: true, json: async () => ({ data: [] }) };
+      }
+      if (url.includes("active_exiting")) {
+        return {
+          ok: true,
+          json: async () => ({
+            data: [{ balance: "64000000000" }],
+          }),
+        };
+      }
+      throw new Error(`unexpected url ${url}`);
+    }) as unknown as typeof fetch;
+    const r = await getValidatorQueueRatio();
+    process.env.BEACONCHAIN_API_KEY = prevKey;
+    expect(r.status).toBe("ok");
+    expect(r.source).toContain("PublicNode");
+    expect(r.value).toBeCloseTo(1, 2);
+  });
+
+  it("parses Farside ETF HTML and sums 6M window", () => {
+    const now = Date.parse("22 May 2026");
+    const html = `
+      <table>
+        <tr><td>22 May 2026</td><td>10.5</td><td>5.2</td><td>15.7</td></tr>
+        <tr><td>21 May 2026</td><td>-2.0</td><td>1.0</td><td>(1.0)</td></tr>
+        <tr><td>Total</td><td></td><td></td><td>100</td></tr>
+      </table>
+    `;
+    const rows = parseFarsideEtfHtml(html);
+    expect(rows).toHaveLength(2);
+    const total = sumFarside6mUsd(rows, 180, now);
+    expect(total).toBe(15_700_000 - 1_000_000);
+  });
+
+  it("parses Farside markdown table", () => {
+    const now = Date.parse("22 May 2026");
+    const md = `| 22 May 2026 | 1.0 | 2.0 | 3.5 |
+| 21 May 2026 | (1.0) | 0.0 | (1.0) |`;
+    const rows = parseFarsideMarkdown(md);
+    expect(rows).toHaveLength(2);
+    const total = sumFarside6mUsd(rows, 180, now);
+    expect(total).toBe(2_500_000);
+  });
+
+  it("parses Farside jina plain-text blocks (all-data format)", () => {
+    const now = Date.parse("26 Jul 2024");
+    const text = `23 Jul 2024\t
+266.5
+\t
+-
+\t
+71.3
+\t
+106.6
+
+24 Jul 2024\t
+17.4
+\t
+(133.3)
+`;
+    const rows = parseFarsideJinaPlaintext(text);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].totalUsd).toBe(106_600_000);
+    expect(rows[1].totalUsd).toBeCloseTo(-133_300_000, 0);
+    const total = sumFarside6mUsd(rows, 180, now);
+    expect(total).toBeCloseTo(106_600_000 - 133_300_000, 0);
+  });
+
+  it("ETF 6M flows from Farside jina plain-text fallback", async () => {
+    const prevCg = process.env.COINGLASS_API_KEY;
+    const prevBw = process.env.BLOCKWORKS_API_KEY;
     delete process.env.COINGLASS_API_KEY;
     delete process.env.BLOCKWORKS_API_KEY;
+    const plain = `22 May 2026\t\n1.0\n\t\n2.5\n`;
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("jina.ai")) {
+        return { ok: true, text: async () => plain };
+      }
+      return { ok: false, status: 403, text: async () => "" };
+    }) as unknown as typeof fetch;
     const r = await getEtfFlows6mUsd();
-    process.env.COINGLASS_API_KEY = prev;
+    process.env.COINGLASS_API_KEY = prevCg;
+    process.env.BLOCKWORKS_API_KEY = prevBw;
+    expect(r.status).toBe("ok");
+    expect(r.value).toBe(2_500_000);
+  });
+
+  it("ETF 6M flows from Farside jina markdown fallback", async () => {
+    const prevCg = process.env.COINGLASS_API_KEY;
+    const prevBw = process.env.BLOCKWORKS_API_KEY;
+    delete process.env.COINGLASS_API_KEY;
+    delete process.env.BLOCKWORKS_API_KEY;
+    const md = `| 22 May 2026 | 1.0 | 2.5 |`;
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("jina.ai")) {
+        return { ok: true, text: async () => md };
+      }
+      return { ok: true, text: async () => "<html>Just a moment...</html>" };
+    }) as unknown as typeof fetch;
+    const r = await getEtfFlows6mUsd();
+    process.env.COINGLASS_API_KEY = prevCg;
+    process.env.BLOCKWORKS_API_KEY = prevBw;
+    expect(r.status).toBe("ok");
+    expect(r.source).toContain("Farside");
+    expect(r.value).toBe(2_500_000);
+  });
+
+  it("ETF 6M flows from Farside HTML without API key", async () => {
+    const prevCg = process.env.COINGLASS_API_KEY;
+    const prevBw = process.env.BLOCKWORKS_API_KEY;
+    delete process.env.COINGLASS_API_KEY;
+    delete process.env.BLOCKWORKS_API_KEY;
+    const html = `<tr><td>22 May 2026</td><td>1.0</td><td>2.5</td></tr>`;
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("jina.ai")) {
+        throw new Error("jina unavailable");
+      }
+      return { ok: true, text: async () => html };
+    }) as unknown as typeof fetch;
+    const r = await getEtfFlows6mUsd();
+    process.env.COINGLASS_API_KEY = prevCg;
+    process.env.BLOCKWORKS_API_KEY = prevBw;
+    expect(r.status).toBe("ok");
+    expect(r.value).toBe(2_500_000);
+  });
+
+  it("ETF 6M flows stale when all sources fail", async () => {
+    const prevCg = process.env.COINGLASS_API_KEY;
+    const prevBw = process.env.BLOCKWORKS_API_KEY;
+    delete process.env.COINGLASS_API_KEY;
+    delete process.env.BLOCKWORKS_API_KEY;
+    global.fetch = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      if (url.includes("jina.ai")) {
+        return { ok: true, text: async () => "Title: empty\n\nNo data here" };
+      }
+      return { ok: true, text: async () => "<html>Just a moment...</html>" };
+    }) as unknown as typeof fetch;
+    const r = await getEtfFlows6mUsd();
+    process.env.COINGLASS_API_KEY = prevCg;
+    process.env.BLOCKWORKS_API_KEY = prevBw;
     expect(r.status).toBe("stale");
   });
 });

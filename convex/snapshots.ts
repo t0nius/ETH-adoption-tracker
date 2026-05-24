@@ -208,6 +208,37 @@ export const insert = internalMutation({
   },
 });
 
+/** Latest ok snapshot for a metric (used to preserve manual ETF input). */
+export const latestOkSnapshot = internalQuery({
+  args: { metric_name: v.string() },
+  returns: v.union(
+    v.object({
+      metric_name: v.string(),
+      status: v.literal("ok"),
+      value: v.union(v.number(), v.null()),
+      timestamp: v.number(),
+      source: v.string(),
+    }),
+    v.null(),
+  ),
+  handler: async (ctx, args) => {
+    const recent = await ctx.db
+      .query("metrics_snapshots")
+      .withIndex("by_metric_time", (q) => q.eq("metric_name", args.metric_name))
+      .order("desc")
+      .take(48);
+    const latest = recent.find((r) => r.status === "ok");
+    if (!latest) return null;
+    return {
+      metric_name: latest.metric_name,
+      status: "ok" as const,
+      value: latest.value,
+      timestamp: latest.timestamp,
+      source: latest.source,
+    };
+  },
+});
+
 export const insertIfMissing = internalMutation({
   args: {
     metric_name: v.string(),
