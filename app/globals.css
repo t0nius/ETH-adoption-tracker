@@ -1,0 +1,227 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ============================================================
+   ETH Adoption Tracker — Monochrome minimal (option B)
+   Grayscale everywhere. --signal only for tripped triggers / breach.
+   ============================================================ */
+
+:root {
+  --bg-0: #0a0a0a;
+  --bg-1: #111111;
+  --bg-2: #161616;
+  --bg-3: #1c1c1c;
+
+  --line: #222222;
+  --line-bright: #303030;
+  --line-dim: #1a1a1a;
+
+  --ink: #ededed;
+  --ink-soft: #b3b3b3;
+  --muted: #7a7a7a;
+  --dim: #4a4a4a;
+  --faint: #2e2e2e;
+
+  /* Directional data — grayscale only */
+  --up: var(--ink-soft);
+  --down: var(--muted);
+  --up-bg: transparent;
+  --down-bg: transparent;
+
+  /* Single highlight — invalidation / tripped trigger */
+  --signal: var(--ink);
+  --signal-bg: var(--bg-2);
+
+  /* Legacy aliases → grayscale */
+  --accent: var(--ink-soft);
+  --ok: var(--muted);
+  --warn: var(--ink-soft);
+  --alert: var(--signal);
+}
+
+@layer base {
+  html,
+  body {
+    min-height: 100%;
+    background: var(--bg-0);
+    color: var(--ink);
+  }
+
+  body {
+    font-family: var(--font-body), -apple-system, sans-serif;
+  }
+
+  h1 {
+    font-family: var(--font-display), sans-serif;
+    letter-spacing: -0.025em;
+    font-weight: 700;
+  }
+
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    font-family: var(--font-body), sans-serif;
+    letter-spacing: -0.01em;
+    font-weight: 600;
+  }
+
+  ::selection {
+    background: var(--ink);
+    color: var(--bg-0);
+  }
+
+  *:focus-visible {
+    outline: 1px solid var(--ink);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .bg-app { background: var(--bg-0); }
+  .text-ink { color: var(--ink); }
+  .text-ink-soft { color: var(--ink-soft); }
+  .text-muted { color: var(--muted); }
+  .text-dim { color: var(--dim); }
+  .text-signal { color: var(--signal); }
+
+  .font-display {
+    font-family: var(--font-display), sans-serif;
+  }
+  .font-mono {
+    font-family: var(--font-mono), ui-monospace, Menlo, monospace;
+    font-feature-settings: "zero", "ss01";
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+    font-feature-settings: "tnum";
+  }
+
+  .text-eyebrow {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.625rem;
+    line-height: 1;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 500;
+    color: var(--muted);
+  }
+
+  .surface {
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+  }
+  .surface-raised {
+    background: var(--bg-2);
+    border: 1px solid var(--line);
+  }
+  .surface-flat {
+    background: transparent;
+    border: 1px solid var(--line);
+  }
+
+  .status-tag {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.625rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    font-weight: 600;
+    color: var(--muted);
+  }
+  .status-tag-stale { color: var(--signal); }
+
+  /* Compact delta row — borderless */
+  .delta {
+    font-family: var(--font-mono), monospace;
+    font-variant-numeric: tabular-nums;
+    font-size: 0.65rem;
+    line-height: 1.2;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 0.35rem;
+  }
+  .delta .lbl {
+    color: var(--dim);
+    font-size: 0.55rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .delta-up { color: var(--ink-soft); }
+  .delta-down { color: var(--muted); }
+  .delta-flat { color: var(--dim); }
+  .delta-na { color: var(--dim); }
+
+  .rule {
+    border-top: 1px solid var(--line);
+    height: 0;
+    width: 100%;
+  }
+
+  .status-bar {
+    position: sticky;
+    top: 0;
+    z-index: 30;
+    background: rgba(10, 10, 10, 0.94);
+    backdrop-filter: blur(8px);
+    border-bottom: 1px solid var(--line);
+  }
+
+  .btn {
+    font-family: var(--font-mono), monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    font-weight: 500;
+    padding: 0.4rem 0.85rem;
+    border: 1px solid var(--line);
+    background: transparent;
+    color: var(--ink-soft);
+    transition: border-color 120ms ease, color 120ms ease;
+    cursor: pointer;
+  }
+  .btn:hover {
+    border-color: var(--line-bright);
+    color: var(--ink);
+  }
+  .btn-active {
+    background: var(--ink);
+    color: var(--bg-0);
+    border-color: var(--ink);
+  }
+  .btn-active:hover {
+    background: var(--ink);
+    color: var(--bg-0);
+  }
+
+  .input {
+    font-family: var(--font-mono), monospace;
+    background: var(--bg-1);
+    border: 1px solid var(--line);
+    color: var(--ink);
+    padding: 0.4rem 0.65rem;
+    font-size: 0.8rem;
+    width: 100%;
+  }
+  .input:focus {
+    outline: none;
+    border-color: var(--ink);
+  }
+
+  .hover-bright {
+    transition: border-color 140ms ease;
+  }
+  .hover-bright:hover {
+    border-color: var(--line-bright);
+  }
+
+  @keyframes panel-in {
+    from { opacity: 0; transform: translateY(2px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  .panel-in {
+    animation: panel-in 320ms ease both;
+  }
+}
