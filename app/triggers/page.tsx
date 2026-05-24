@@ -8,6 +8,7 @@ import { useQuery } from "convex/react";
 import { api } from "@/convex/_generated/api";
 import { TriggerCard } from "@/components/TriggerCard";
 import { StatusBar } from "@/components/StatusBar";
+import { ManualDataBanner } from "@/components/ManualDataBanner";
 
 type Trigger = {
   trigger_name: string;
@@ -249,6 +250,8 @@ export default function TriggersPage() {
             </div>
           </div>
         </section>
+
+        <ManualDataBanner />
 
         {/* Risk lane */}
         {stats && (

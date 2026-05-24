@@ -115,6 +115,33 @@ export default function MethodologyPage() {
         </ol>
       </section>
 
+      {/* Regime score */}
+      <section className="surface mt-4">
+        <header className="border-b border-[color:var(--line)] px-4 py-2">
+          <p className="text-eyebrow">REGIME SCORE (0–100)</p>
+        </header>
+        <div className="px-4 py-4">
+          <p className="text-sm leading-relaxed text-ink-soft">
+            The dashboard regime score is computed server-side from live metric
+            coverage, data freshness, and trigger state. It is not a price
+            forecast — it summarizes whether the adoption stack looks
+            constructive or fragile.
+          </p>
+          <ul className="mt-4 space-y-2 font-mono text-xs text-muted">
+            <li>· Live metrics (all 11 OK): up to 40 pts</li>
+            <li>· No stale sources: up to 20 pts</li>
+            <li>· No aged (&gt;24h) OK metrics: up to 15 pts</li>
+            <li>· No tripped triggers: up to 15 pts</li>
+            <li>· No warning/partial triggers: up to 10 pts</li>
+          </ul>
+          <p className="mt-4 text-xs text-dim">
+            Labels: ≥80 CONSTRUCTIVE · ≥60 CAUTIOUS · ≥40 FRAGILE · &lt;40
+            STRESSED. Implementation:{" "}
+            <code className="text-ink-soft">lib/regime.ts</code>.
+          </p>
+        </div>
+      </section>
+
       {/* Quality model */}
       <section className="surface mt-4">
         <header className="border-b border-[color:var(--line)] px-4 py-2">

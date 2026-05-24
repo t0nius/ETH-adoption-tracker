@@ -29,4 +29,12 @@ crons.weekly(
   {},
 );
 
+// Drop hourly snapshots older than 180 days (batched per metric per run).
+crons.weekly(
+  "purge-old-snapshots",
+  { dayOfWeek: "sunday", hourUTC: 3, minuteUTC: 0 },
+  internal.snapshots.runPurgeOldSnapshots,
+  {},
+);
+
 export default crons;

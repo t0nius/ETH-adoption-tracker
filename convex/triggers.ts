@@ -25,6 +25,7 @@ import {
   formatTriggerAlert,
   sendTelegramAlert,
 } from "../lib/integrations/telegram";
+import { requireSecretInProduction } from "../lib/production";
 
 const triggerStateShape = v.object({
   _id: v.id("triggers_state"),
@@ -368,6 +369,10 @@ export const setManualTrigger = mutation({
   returns: v.null(),
   handler: async (ctx, args) => {
     const requiredToken = process.env.MANUAL_TRIGGER_ADMIN_TOKEN;
+    requireSecretInProduction(
+      "MANUAL_TRIGGER_ADMIN_TOKEN",
+      requiredToken,
+    );
     if (requiredToken && args.admin_token !== requiredToken) {
       throw new Error("Unauthorized manual trigger action");
     }

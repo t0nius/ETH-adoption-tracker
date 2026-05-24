@@ -4,6 +4,7 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:all": "concurrently -k \"npx convex dev\" \"npm run dev\"",
     "dev:clean": "rm -rf .next && next dev",
     "build": "next build",
     "start": "next start",
@@ -12,7 +13,6 @@
     "test:watch": "vitest"
   },
   "dependencies": {
-    "@tremor/react": "^3.18.7",
     "convex": "^1.39.1",
     "next": "^14.2.35",
     "react": "^18.3.1",
@@ -25,6 +25,7 @@
     "@types/react": "^18.3.11",
     "@types/react-dom": "^18.3.0",
     "autoprefixer": "^10.4.20",
+    "concurrently": "^9.1.2",
     "eslint": "^8.57.1",
     "eslint-config-next": "^14.2.35",
     "postcss": "^8.4.47",

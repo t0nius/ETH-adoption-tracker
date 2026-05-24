@@ -1,5 +1,17 @@
 import { v } from "convex/values";
-import { query, internalMutation, internalQuery } from "./_generated/server";
+import {
+  query,
+  internalMutation,
+  internalQuery,
+  internalAction,
+} from "./_generated/server";
+import { internal } from "./_generated/api";
+import {
+  DASHBOARD_HISTORY_DAYS,
+  SNAPSHOT_RETENTION_DAYS,
+  downsampleDaily,
+} from "../lib/history";
+import { computeRegimeScore, regimeLabel } from "../lib/regime";
 
 const snapshotShape = v.object({
   _id: v.id("metrics_snapshots"),
@@ -291,11 +303,42 @@ export const historyForMetric = query({
         q.eq("metric_name", args.metric_name).gte("timestamp", args.sinceMs),
       )
       .collect();
-    return rows.map((r) => ({
+    const history: HistoryPoint[] = rows.map((r) => ({
       timestamp: r.timestamp,
       value: r.value,
       status: r.status,
     }));
+    return downsampleDaily(history);
+  },
+});
+
+/** Delete snapshots older than SNAPSHOT_RETENTION_DAYS (batched per metric). */
+export const purgeOldSnapshots = internalMutation({
+  args: {},
+  returns: v.object({ deleted: v.number() }),
+  handler: async (ctx) => {
+    const cutoff = Date.now() - SNAPSHOT_RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    let deleted = 0;
+    for (const name of METRIC_NAMES) {
+      const stale = await ctx.db
+        .query("metrics_snapshots")
+        .withIndex("by_metric_time", (q) => q.eq("metric_name", name))
+        .filter((q) => q.lt(q.field("timestamp"), cutoff))
+        .take(200);
+      for (const row of stale) {
+        await ctx.db.delete(row._id);
+        deleted += 1;
+      }
+    }
+    return { deleted };
+  },
+});
+
+export const runPurgeOldSnapshots = internalAction({
+  args: {},
+  returns: v.object({ deleted: v.number() }),
+  handler: async (ctx): Promise<{ deleted: number }> => {
+    return await ctx.runMutation(internal.snapshots.purgeOldSnapshots, {});
   },
 });
 
@@ -312,7 +355,9 @@ export const dashboardBundle = query({
     }),
   ),
   handler: async (ctx, args) => {
-    const sinceMs = args.sinceMs ?? Date.now() - 365 * 24 * 60 * 60 * 1000;
+    const sinceMs =
+      args.sinceMs ??
+      Date.now() - DASHBOARD_HISTORY_DAYS * 24 * 60 * 60 * 1000;
     const rowsByMetric = await Promise.all(
       METRIC_NAMES.map(async (name) => {
         const [latestRows, historyRows] = await Promise.all([
@@ -330,11 +375,12 @@ export const dashboardBundle = query({
         ]);
 
         const latest = latestRows[0];
-        const history: HistoryPoint[] = historyRows.map((r) => ({
+        const rawHistory: HistoryPoint[] = historyRows.map((r) => ({
           timestamp: r.timestamp,
           value: r.value,
           status: r.status,
         }));
+        const history = downsampleDaily(rawHistory);
         const freshnessHours = latest
           ? (Date.now() - latest.timestamp) / (60 * 60 * 1000)
           : 999;
@@ -443,5 +489,173 @@ export const sourceHealth = query({
       }),
     );
     return rows;
+  },
+});
+
+const triggerBriefShape = v.object({
+  trigger_name: v.string(),
+  tier: v.number(),
+  status: v.string(),
+  message: v.string(),
+});
+
+const sourceHealthShape = v.object({
+  metric_name: v.string(),
+  staleRate7d: v.number(),
+  latestStatus: v.union(v.literal("ok"), v.literal("stale")),
+  freshnessHours: v.number(),
+  qualityScore: v.number(),
+});
+
+const bundleShape = v.object({
+  metric_name: v.string(),
+  snapshot: latestSnapshotShape,
+  history: v.array(historyPointShape),
+  analytics: analyticsShape,
+});
+
+/** Single round-trip for the home dashboard. */
+export const dashboardOverview = query({
+  args: {},
+  returns: v.object({
+    bundles: v.array(bundleShape),
+    sourceHealth: v.array(sourceHealthShape),
+    triggers: v.array(triggerBriefShape),
+    regime: v.object({
+      score: v.number(),
+      label: v.string(),
+    }),
+    fragile: v.array(sourceHealthShape),
+  }),
+  handler: async (ctx) => {
+    const sinceMs = Date.now() - DASHBOARD_HISTORY_DAYS * 24 * 60 * 60 * 1000;
+    const total = METRIC_NAMES.length;
+
+    const bundles = await Promise.all(
+      METRIC_NAMES.map(async (name) => {
+        const [latestRows, historyRows] = await Promise.all([
+          ctx.db
+            .query("metrics_snapshots")
+            .withIndex("by_metric_time", (q) => q.eq("metric_name", name))
+            .order("desc")
+            .take(1),
+          ctx.db
+            .query("metrics_snapshots")
+            .withIndex("by_metric_time", (q) =>
+              q.eq("metric_name", name).gte("timestamp", sinceMs),
+            )
+            .collect(),
+        ]);
+        const latest = latestRows[0];
+        const rawHistory: HistoryPoint[] = historyRows.map((r) => ({
+          timestamp: r.timestamp,
+          value: r.value,
+          status: r.status,
+        }));
+        const history = downsampleDaily(rawHistory);
+        const freshnessHours = latest
+          ? (Date.now() - latest.timestamp) / (60 * 60 * 1000)
+          : 999;
+        const completeness30 = completeness(history, 30);
+        const staleRate7d = staleRate(history, 7);
+        const snapshot = latest
+          ? {
+              metric_name: latest.metric_name,
+              status: latest.status,
+              value: latest.value,
+              formatted: latest.formatted,
+              unit: latest.unit,
+              source: latest.source,
+              timestamp: latest.timestamp,
+              error: latest.error,
+            }
+          : {
+              metric_name: name,
+              status: "stale" as const,
+              value: null,
+              formatted: "—",
+              source: "no snapshots yet",
+              timestamp: 0,
+              error: "No snapshot available",
+            };
+        return {
+          metric_name: name,
+          snapshot,
+          history,
+          analytics: {
+            delta7: deltaPct(history, 7),
+            delta30: deltaPct(history, 30),
+            delta90: deltaPct(history, 90),
+            delta365: deltaPct(history, 365),
+            avg30: avg(history, 30),
+            avg90: avg(history, 90),
+            volatility30: volatility(history, 30),
+            completeness30,
+            completeness90: completeness(history, 90),
+            freshnessHours,
+            staleRate7d,
+            qualityScore: qualityScore({
+              freshnessHours,
+              completeness30,
+              staleRate7d,
+            }),
+          },
+        };
+      }),
+    );
+
+    const sourceHealth = bundles.map((b) => ({
+      metric_name: b.metric_name,
+      staleRate7d: b.analytics.staleRate7d,
+      latestStatus: b.snapshot.status,
+      freshnessHours: b.analytics.freshnessHours,
+      qualityScore: b.analytics.qualityScore,
+    }));
+
+    const triggerRows = await ctx.db.query("triggers_state").collect();
+    const triggers = triggerRows
+      .map((t) => ({
+        trigger_name: t.trigger_name,
+        tier: t.tier,
+        status: t.status,
+        message: t.message,
+      }))
+      .sort((a, b) => a.trigger_name.localeCompare(b.trigger_name));
+
+    const okCount = bundles.filter((b) => b.snapshot.status === "ok").length;
+    const staleCount = bundles.filter((b) => b.snapshot.status === "stale").length;
+    const agedCount = bundles.filter(
+      (b) => b.snapshot.status === "ok" && b.analytics.freshnessHours > 24,
+    ).length;
+    const triggeredCount = triggers.filter((t) => t.status === "triggered").length;
+    const warningCount = triggers.filter(
+      (t) => t.status === "warning" || t.status === "partial",
+    ).length;
+    const noDataCount = triggers.filter(
+      (t) => t.status === "insufficient_data" || t.status === "needs_manual",
+    ).length;
+
+    const score = computeRegimeScore({
+      liveCount: okCount,
+      totalMetrics: total,
+      staleCount,
+      agedCount,
+      triggeredCount,
+      warningCount,
+      noDataCount,
+    });
+
+    const fragile = [...sourceHealth]
+      .filter((s) => s.qualityScore < 70)
+      .sort((a, b) => a.qualityScore - b.qualityScore)
+      .slice(0, 4);
+
+    return {
+      bundles,
+      sourceHealth,
+      triggers,
+      regime: { score, label: regimeLabel(score) },
+      fragile,
+    };
   },
 });

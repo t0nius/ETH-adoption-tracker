@@ -1,11 +1,20 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@/convex/_generated/api";
+import { isProductionDeploy, requireSecretInProduction } from "@/lib/production";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
   const url = process.env.NEXT_PUBLIC_CONVEX_URL;
   const requiredToken = process.env.EXPORT_API_TOKEN;
+  try {
+    requireSecretInProduction("EXPORT_API_TOKEN", requiredToken);
+  } catch (e) {
+    return Response.json(
+      { error: e instanceof Error ? e.message : String(e) },
+      { status: 503 },
+    );
+  }
   if (requiredToken) {
     const requestUrl = new URL(req.url);
     const provided =
